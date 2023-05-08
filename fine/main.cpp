@@ -18,6 +18,7 @@ public:
     FineGrainedQueue() : head(nullptr), tail(nullptr) {}
 
     ~FineGrainedQueue() {
+        std::lock_guard<std::mutex> lock(queue_mutex);
         while (head) {
             Node* temp = head;
             head = head->next;
@@ -26,30 +27,45 @@ public:
     }
     void insertIntoMiddle(int value, int pos)
     {
-        if (pos < 0)
-            return;
         Node* new_node = new Node(value);
 
         std::unique_lock<std::mutex> queue_lock(queue_mutex);
 
+        if (pos <= 0) {  // insert at beginning
+            new_node->next = head;
+            head = new_node;
+            if (!tail) {  // queue was empty
+                tail = new_node;
+            }
+            return;
+        }
+
+        // find the node at position pos-1
         Node* curr = head;
         int count = 0;
-
         while (curr && count < pos - 1) {
-            std::unique_lock<std::mutex> node_lock((curr->node_mutex));
+            std::unique_lock<std::mutex> node_lock(curr->node_mutex);
             curr = curr->next;
             count++;
         }
 
-        if (curr && count == pos - 1) {
-            std::unique_lock<std::mutex> node_lock((curr->node_mutex));
+        if (curr) {  // insert after the node at position pos-1
+            std::unique_lock<std::mutex> node_lock(curr->node_mutex);
             Node* next = curr->next;
             curr->next = new_node;
             new_node->next = next;
+            if (!next) {  // insert at end
+                tail = new_node;
+            }
         }
-        else {
-            delete new_node;
-            throw std::out_of_range("Invalid position");
+        else {  // pos is out of range, insert at end
+            if (!tail) {  // queue was empty
+                head = tail = new_node;
+            }
+            else {
+                tail->next = new_node;
+                tail = new_node;
+            }
         }
     }
     void enqueue(int value) {
@@ -93,7 +109,9 @@ int main() {
     queue.enqueue(2);
     queue.enqueue(3);
 
-    queue.insertIntoMiddle(66, 2);
+    queue.insertIntoMiddle(0, -1);
+    queue.insertIntoMiddle(0, 55);
+    queue.insertIntoMiddle(0, 2);
 
     while (!queue.empty()) {
         std::cout << queue.dequeue() << std::endl;
